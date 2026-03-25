@@ -1,0 +1,77 @@
+# Multi-Agent RFP System - Development Environment
+# This docker-compose file sets up the required infrastructure services
+# for local development without Docker Desktop dependency
+
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: rfp-postgres
+    environment:
+      POSTGRES_DB: rfp_system
+      POSTGRES_USER: rfp_user
+      POSTGRES_PASSWORD: rfp_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rfp_user -d rfp_system"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis for Message Queue and Caching
+  redis:
+    image: redis:7-alpine
+    container_name: rfp-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # pgAdmin for Database Management (Optional)
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: rfp-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@rfpsystem.com
+      PGADMIN_DEFAULT_PASSWORD: admin123
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      - postgres
+
+  # Redis Commander for Redis Management (Optional)
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: rfp-redis-commander
+    environment:
+      REDIS_HOSTS: local:redis:6379
+    ports:
+      - "8081:8081"
+    depends_on:
+      - redis
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  pgadmin_data:
+    driver: local
+
+networks:
+  default:
+    name: rfp-network
