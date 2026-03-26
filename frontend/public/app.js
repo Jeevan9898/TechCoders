@@ -174,8 +174,8 @@ function renderRFPTable(data) {
         <div style="display:flex;gap:4px">
           <button class="btn btn-outline btn-sm" onclick="viewRFP('${r.id}')" title="View"><i class="fas fa-eye"></i></button>
           ${r.status==='detected'?`<button class="btn btn-sm" style="background:#f0fdf4;color:#166534;border:1px solid #bbf7d0" onclick="processRFP('${r.id}')" title="Start"><i class="fas fa-play"></i></button>`:''}
-          ${r.status==='reviewed'?`<button class="btn btn-sm" style="background:#f0fdf4;color:#166534;border:1px solid #bbf7d0" onclick="approveRFP('${r.id}')" title="Approve"><i class="fas fa-check"></i></button>`:''}
-        </div>
+          ${r.status==='reviewed'?`<button class="btn btn-sm" style="background:#f0fdf4;color:#166534;border:1px solid #bbf7d0" onclick="openReviewForRFP('${r.id}')" title="Review"><i class="fas fa-user-check"></i></button>`:''}
+          ${r.status==='rejected'?`<button class="btn btn-sm" style="background:#fef2f2;color:#991b1b;border:1px solid #fecaca;cursor:default" title="Rejected"><i class="fas fa-times-circle"></i></button>`:''}        </div>
       </td>
     </tr>`).join('');
 }
@@ -216,29 +216,280 @@ function approveRFP(id) {
   showNotif(`RFP ${id} approved and submitted!`);
 }
 
+// ── Human Review Modal ────────────────────────────────────────
+let _reviewRfpId = null;
+let _reviewWfId  = null;
+
+function openReviewForRFP(rfpId) {
+  // Find the workflow associated with this RFP
+  const wf = WORKFLOWS.find(w => w.rfpId === rfpId);
+  if (!wf) {
+    showNotif('No workflow found for this RFP.');
+    return;
+  }
+  openReviewModal(rfpId, wf.id);
+}
+
+function openReviewModal(rfpId, wfId) {
+  _reviewRfpId = rfpId;
+  _reviewWfId  = wfId;
+
+  const rfp = rfpData.find(r => r.id === rfpId);
+  const wf  = WORKFLOWS.find(w => w.id === wfId);
+  if (!rfp || !wf) return;
+
+  document.getElementById('review-wf-label').textContent = `${wfId} · ${rfpId}`;
+
+  // Summary rows
+  document.getElementById('review-summary').innerHTML = [
+    ['RFP Title',    rfp.title],
+    ['Source',       rfp.source],
+    ['Priority',     rfp.priority.charAt(0).toUpperCase() + rfp.priority.slice(1)],
+    ['Due Date',     rfp.dueDate],
+    ['Project Value',fmt(rfp.value)],
+    ['Agent',        rfp.agent || 'Technical Match Agent'],
+  ].map(([k,v]) => `
+    <div style="display:flex;justify-content:space-between;align-items:center;font-size:13px">
+      <span style="color:var(--text3);font-weight:600">${k}</span>
+      <span style="color:var(--text);font-weight:700">${v}</span>
+    </div>`).join('');
+
+  // Completed step outputs
+  const completedSteps = wf.steps.filter(s => s.status === 'completed');
+  document.getElementById('review-steps').innerHTML = completedSteps.length
+    ? completedSteps.map(s => `
+        <div style="padding:8px 12px;background:var(--surface);border:1px solid var(--card-border);border-radius:8px">
+          <div style="font-size:11px;font-weight:700;color:#6366f1;margin-bottom:2px">${s.name} <span style="color:var(--text3);font-weight:500">· ${s.agent}</span></div>
+          <div style="font-size:12px;color:var(--text2)">${s.output}</div>
+        </div>`).join('')
+    : '<div style="font-size:12px;color:var(--text3)">No completed steps yet.</div>';
+
+  document.getElementById('review-notes').value = '';
+  document.getElementById('review-modal').classList.add('open');
+}
+
+function closeReviewModal() {
+  document.getElementById('review-modal').classList.remove('open');
+}
+
+function approveRFPReview() {
+  const notes = document.getElementById('review-notes').value.trim();
+  const t = new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false});
+
+  // Complete the Human Review step in the workflow
+  const wf = WORKFLOWS.find(w => w.id === _reviewWfId);
+  if (wf) {
+    const reviewStep = wf.steps.find(s => s.name === 'Human Review');
+    if (reviewStep) {
+      reviewStep.status = 'completed';
+      reviewStep.start  = reviewStep.start || t;
+      reviewStep.end    = t;
+      reviewStep.dur    = '< 1m';
+      reviewStep.output = notes
+        ? `Proposal approved by reviewer. Notes: "${notes}"`
+        : 'Proposal reviewed and approved — submitted to client ✓';
+    }
+    wf.status   = 'completed';
+    wf.progress = 100;
+  }
+
+  // Update RFP status
+  rfpData = rfpData.map(r => r.id === _reviewRfpId ? {...r, status:'approved', progress:100} : r);
+  renderRFPTable(rfpData);
+
+  // Audit entry
+  liveAudit.unshift({
+    time: t, agent: 'Human Reviewer',
+    action: `Approved proposal for ${_reviewRfpId} — submitted to client`,
+    type: 'success', _new: true
+  });
+  renderAuditMini();
+  if (document.getElementById('page-audit').classList.contains('active')) renderFullAudit();
+
+  // Refresh workflow view if open
+  if (document.getElementById('page-workflows').classList.contains('active')) {
+    renderWFList();
+    if (selectedWF.id === _reviewWfId) renderWFDetail(wf);
+  }
+
+  closeReviewModal();
+  showNotif(`RFP ${_reviewRfpId} approved and submitted to client!`);
+}
+
+function rejectRFPReview() {
+  const notes = document.getElementById('review-notes').value.trim();
+  const t = new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false});
+
+  const wf = WORKFLOWS.find(w => w.id === _reviewWfId);
+  if (wf) {
+    const reviewStep = wf.steps.find(s => s.name === 'Human Review');
+    if (reviewStep) {
+      reviewStep.status = 'error';
+      reviewStep.end    = t;
+      reviewStep.output = notes
+        ? `Proposal rejected. Reason: "${notes}"`
+        : 'Proposal rejected by reviewer — workflow archived.';
+    }
+    wf.status = 'error';
+  }
+
+  rfpData = rfpData.map(r => r.id === _reviewRfpId ? {...r, status:'rejected', progress:0} : r);
+  renderRFPTable(rfpData);
+
+  liveAudit.unshift({
+    time: t, agent: 'Human Reviewer',
+    action: `Rejected proposal for ${_reviewRfpId}${notes ? ': ' + notes : ''}`,
+    type: 'warning', _new: true
+  });
+  renderAuditMini();
+  if (document.getElementById('page-audit').classList.contains('active')) renderFullAudit();
+
+  if (document.getElementById('page-workflows').classList.contains('active')) {
+    renderWFList();
+    if (selectedWF.id === _reviewWfId) renderWFDetail(wf);
+  }
+
+  closeReviewModal();
+  showNotif(`RFP ${_reviewRfpId} rejected and archived.`);
+}
+
 function openCreateModal() { document.getElementById('create-modal').classList.add('open'); }
 function closeCreateModal() { document.getElementById('create-modal').classList.remove('open'); }
 
 function createRFP() {
-  const title = document.getElementById('new-title').value.trim();
-  const source = document.getElementById('new-source').value.trim();
+  const title    = document.getElementById('new-title').value.trim();
+  const source   = document.getElementById('new-source').value.trim();
   const priority = document.getElementById('new-priority').value;
-  const dueDate = document.getElementById('new-date').value;
-  const value = parseInt(document.getElementById('new-value').value)||0;
+  const dueDate  = document.getElementById('new-date').value;
+  const desc     = (document.getElementById('new-desc').value||'').trim();
+  const value    = parseInt(document.getElementById('new-value').value)||0;
   if(!title||!source||!dueDate||!value) { alert('Please fill in all required fields.'); return; }
+
   const newId = 'RFP-0'+Math.floor(Math.random()*900+100);
-  rfpData.unshift({ id:newId, title, source, status:'processing', priority, dueDate, value, progress:0, agent:'RFP Identification Agent', requirements:0, matches:0 });
+  const wfId  = 'WF-00'+Math.floor(Math.random()*90+10);
+  const now   = new Date();
+  const startTime = now.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false});
+
+  // ── Add to RFP pipeline ──────────────────────────────────────
+  rfpData.unshift({
+    id:newId, title, source, status:'processing', priority, dueDate, value,
+    progress:0, agent:'RFP Identification Agent', requirements:0, matches:0
+  });
   renderRFPTable(rfpData);
   closeCreateModal();
-  showNotif(`RFP "${title}" created! Workflow started.`);
-  // Simulate progress
-  let p = 0;
-  const interval = setInterval(() => {
-    p = Math.min(p+10, 100);
-    rfpData = rfpData.map(r => r.id===newId ? {...r, progress:p, status:p<100?'processing':'reviewed'} : r);
+  showNotif(`RFP "${title}" created! Workflow ${wfId} started.`);
+
+  // ── Add to Workflow engine ───────────────────────────────────
+  const newWF = {
+    id: wfId,
+    rfpId: newId,
+    title: title,
+    status: 'processing',
+    progress: 0,
+    start: startTime,
+    est: '—',
+    _new: true,
+    steps: [
+      { name:'RFP Detection',         agent:'RFP Identification Agent', status:'processing', start:startTime, end:null, dur:null,  output:`Scanning source: ${source} — RFP detected and queued` },
+      { name:'Workflow Orchestration', agent:'Orchestrator Agent',       status:'pending',   start:null,      end:null, dur:null,  output:'Waiting for RFP classification to complete' },
+      { name:'Technical Analysis',     agent:'Technical Match Agent',    status:'pending',   start:null,      end:null, dur:null,  output:'Waiting for orchestration' },
+      { name:'Pricing Analysis',       agent:'Pricing Agent',            status:'pending',   start:null,      end:null, dur:null,  output:'Waiting for technical analysis' },
+      { name:'Human Review',           agent:'Human Reviewer',           status:'pending',   start:null,      end:null, dur:null,  output:'Awaiting human approval' },
+    ]
+  };
+  WORKFLOWS.unshift(newWF);
+  selectedWF = newWF;
+
+  // ── Simulate workflow step progression ───────────────────────
+  const stepDurations = [1800, 1200, 3000, 2500, 0]; // ms per step
+  const stepOutputs = [
+    `RFP detected and classified as ${priority.charAt(0).toUpperCase()+priority.slice(1)} Priority`,
+    'Tasks distributed to 3 specialized agents',
+    desc ? `Analyzing requirements: "${desc.slice(0,60)}${desc.length>60?'…':''}"` : 'Analyzing requirements — matching against product catalog',
+    `Competitive pricing strategy in progress — target value ${fmt(value)}`,
+    'Awaiting human approval before submission',
+  ];
+
+  let stepIdx = 0;
+  let rfpProgress = 0;
+
+  function advanceStep() {
+    if(stepIdx >= newWF.steps.length - 1) return;
+
+    // Complete current step
+    const t = new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false});
+    newWF.steps[stepIdx].status  = 'completed';
+    newWF.steps[stepIdx].end     = t;
+    newWF.steps[stepIdx].dur     = stepIdx === 0 ? '1m' : stepIdx === 1 ? '3m' : stepIdx === 2 ? '18m' : '22m';
+    newWF.steps[stepIdx].output  = stepOutputs[stepIdx];
+
+    stepIdx++;
+    rfpProgress = Math.round((stepIdx / (newWF.steps.length - 1)) * 90);
+    newWF.progress = rfpProgress;
+
+    // Start next step
+    if(stepIdx < newWF.steps.length) {
+      newWF.steps[stepIdx].status = stepIdx === newWF.steps.length - 1 ? 'pending' : 'processing';
+      newWF.steps[stepIdx].start  = t;
+    }
+
+    // Update RFP table progress
+    rfpData = rfpData.map(r => r.id === newId ? {...r, progress: rfpProgress, status:'processing'} : r);
     renderRFPTable(rfpData);
-    if(p>=100) clearInterval(interval);
-  }, 1500);
+
+    // Update est. completion
+    const minsLeft = (newWF.steps.length - 1 - stepIdx) * 25;
+    const estDate  = new Date(Date.now() + minsLeft * 60000);
+    newWF.est = estDate.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false});
+
+    // Re-render workflow if currently visible
+    if(document.getElementById('page-workflows').classList.contains('active')) {
+      renderWFList();
+      if(selectedWF.id === wfId) renderWFDetail(newWF);
+    }
+
+    // Add audit entry
+    liveAudit.unshift({
+      time: t,
+      agent: ['RFP Identifier','Orchestrator','Technical Match','Pricing Agent','Human Reviewer'][stepIdx-1] || 'Orchestrator',
+      action: stepOutputs[stepIdx-1],
+      type: 'info',
+      _new: true
+    });
+    if(document.getElementById('page-audit').classList.contains('active')) renderFullAudit();
+    renderAuditMini();
+
+    if(stepIdx < newWF.steps.length - 1) {
+      setTimeout(advanceStep, stepDurations[stepIdx] || 2000);
+    } else {
+      // Mark as reviewed / ready for human approval
+      rfpData = rfpData.map(r => r.id === newId ? {...r, progress:95, status:'reviewed'} : r);
+      renderRFPTable(rfpData);
+      newWF.progress = 95;
+      // Mark Human Review step as pending-action
+      const hrStep = newWF.steps.find(s => s.name === 'Human Review');
+      if (hrStep) {
+        hrStep.status = 'pending';
+        hrStep.output = 'All agent steps complete — awaiting your review and approval.';
+      }
+      showNotif(`Workflow ${wfId} ready for human review!`);
+      if(document.getElementById('page-workflows').classList.contains('active')) {
+        renderWFList();
+        if(selectedWF.id === wfId) renderWFDetail(newWF);
+      }
+      // Auto-open review modal after short delay
+      setTimeout(() => openReviewModal(newId, wfId), 600);
+    }
+  }
+
+  // Kick off first step after a short delay
+  setTimeout(advanceStep, stepDurations[0]);
+
+  // If workflow page is open, switch selection to new workflow
+  if(document.getElementById('page-workflows').classList.contains('active')) {
+    renderWFList();
+    renderWFDetail(newWF);
+  }
 }
 
 // ── Agents ────────────────────────────────────────────────────

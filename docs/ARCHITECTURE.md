@@ -204,3 +204,47 @@ AutonomIQ is a multi-agent AI platform that automates the complete RFP (Request 
 | Demo mode (in-memory fallback) | Full system runs without Docker, PostgreSQL, or Redis for instant preview |
 | localStorage auth (frontend) | Zero-dependency prototype — works as a static file with no server |
 | GPS reverse geocoding (Nominatim) | Free, open-source, no API key required — city/country from coordinates |
+
+
+---
+
+## 7. Frontend Feature Summary (v2.0)
+
+```
+login.html
+  ├── Split-panel UI (dark brand left, white form right)
+  ├── Sign In / Create Account tabs
+  ├── Phone number with country code prefix
+  ├── Location field + GPS geolocation popup (Nominatim reverse geocoding)
+  └── Stores user to localStorage → redirects to dashboard.html
+
+dashboard.html + app.js
+  ├── Auth guard → redirects to login.html if no session
+  ├── User injection → name, initials, role, email, phone, location in navbar + profile
+  ├── Dark / Light mode toggle (persisted in localStorage)
+  ├── Moving background canvas (floating gradient orbs)
+  ├── Dynamic scrolling
+  │     • Scroll progress bar (indigo→cyan→green gradient)
+  │     • Navbar shrinks on scroll
+  │     • Parallax on page header and KPI cards
+  │     • Scroll-reveal on all cards (IntersectionObserver)
+  ├── New RFP Creation
+  │     • Instantly added to RFP Pipeline table
+  │     • New workflow created in Workflow Engine
+  │     • 5 steps run automatically with realistic timing
+  │     • Human Review modal auto-opens on completion
+  ├── Human Review Modal
+  │     • Proposal summary (title, source, priority, value, due date)
+  │     • All completed agent step outputs
+  │     • Reviewer notes field
+  │     • Approve → workflow = completed, RFP = approved, audit logged
+  │     • Reject  → workflow = error,     RFP = rejected, audit logged
+  ├── Live Audit Trail
+  │     • New entry injected every 6 seconds
+  │     • Search + severity filter (High/Medium/Low)
+  │     • NEW badge + slide-in animation
+  └── Live Workflow Engine
+        • Est. completion countdown (HH:MM:SS)
+        • Animated progress bar + elapsed step time
+        • Step output text updates in real time
+```
