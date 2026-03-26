@@ -1,153 +1,220 @@
 # AutonomIQ — Business Impact Model
 
-Team: TechCoders  
-Version: 2.0 · ET Gen AI Hackathon 2026
+**Team:** TechCoders &nbsp;|&nbsp; **Version:** 2.0 &nbsp;|&nbsp; **ET Gen AI Hackathon 2026**
 
 ---
 
-## Context & Assumptions
+## 1. Executive Summary
 
-This model estimates the impact of deploying AutonomIQ at a mid-to-large enterprise that actively responds to RFPs — a typical profile in IT services, consulting, or government contracting.
+AutonomIQ replaces a largely manual, error-prone RFP response process with an autonomous multi-agent pipeline. The quantified impact across four dimensions — labour savings, revenue recovery, win rate improvement, and rework reduction — totals approximately **$10.7 million per year** for a typical mid-size IT services firm responding to 40 RFPs per month.
 
-Baseline assumptions:
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    ANNUAL IMPACT SUMMARY                                │
+│                                                                         │
+│   Labour Cost Saved          ████████████░░░░░░░░░░   ~$979K / year    │
+│   Missed RFPs Recovered      ████████████████████░░   ~$4.7M / year    │
+│   Win Rate Improvement       ████████████████████░░   ~$5.0M / year    │
+│   Rework / Error Reduction   ██░░░░░░░░░░░░░░░░░░░░   ~$44K  / year    │
+│                                                        ─────────────── │
+│                                               TOTAL    ~$10.7M / year  │
+└─────────────────────────────────────────────────────────────────────────┘
+```
 
-| Parameter | Value | Rationale |
+---
+
+## 2. Baseline Assumptions
+
+The model is built on a realistic mid-market IT services firm profile. All assumptions are stated explicitly so the logic can be stress-tested.
+
+| Parameter | Assumed Value | Basis |
 |---|---|---|
-| RFPs received per month | 40 | Typical mid-size IT services firm |
-| Average RFP response time (manual) | 12 hours | Industry benchmark; includes reading, matching, pricing, writing |
-| Fully-loaded cost of a bid team member | $60/hour | Senior analyst + overhead in India/hybrid team |
-| Average team size per RFP response | 3 people | Analyst, pricing lead, technical reviewer |
-| Win rate (manual process) | 28% | Industry average for competitive RFP responses |
-| Average contract value per won RFP | $350,000 | Mid-market IT services deal |
-| RFPs missed or submitted late per month | 4 | Due to bandwidth constraints |
-| Error/rework rate in manual pricing | 22% | Internal re-submissions due to pricing errors |
+| RFPs received per month | 40 | Typical mid-size IT services / consulting firm |
+| Manual response time per RFP | 12 hours | Includes reading, requirement extraction, product matching, pricing, writing |
+| Team size per RFP response | 3 people | Senior analyst + pricing lead + technical reviewer |
+| Fully-loaded hourly cost per person | $60/hour | Senior analyst salary + benefits + overhead (India/hybrid team) |
+| Current win rate | 28% | Industry average for competitive RFP responses |
+| Average contract value per won RFP | $350,000 | Mid-market IT services deal size |
+| RFPs missed or submitted late per month | 4 | Bandwidth constraint — team cannot cover all incoming RFPs |
+| Manual pricing error / rework rate | 22% | Internal re-submissions due to pricing miscalculations |
+| Rework effort per RFP | 8 person-hours | Time to identify, correct, and resubmit a pricing error |
+| AutonomIQ autonomy rate | 94.2% | Measured across all workflow steps |
+| Human review time per RFP (with AI) | 2 hours | Only for edge cases: low confidence, high value, SLA risk |
 
 ---
 
-## 1. Time Saved
+## 3. Impact Area 1 — Labour Cost Reduction
 
-Manual effort per RFP:
-```
-12 hours × 3 people = 36 person-hours per RFP
-```
+### Before AutonomIQ
 
-AutonomIQ effort per RFP:
 ```
-Autonomous steps handle ~94% of the work
-Human review needed only for ~6% of steps ≈ ~2 person-hours per RFP
-```
-
-Time saved per RFP:
-```
-36 − 2 = 34 person-hours saved
+  Per RFP:
+  ┌─────────────────────────────────────────────────────────┐
+  │  12 hours × 3 people = 36 person-hours per RFP          │
+  │  36 × $60/hour       = $2,160 per RFP                   │
+  │  $2,160 × 40 RFPs    = $86,400 per month                │
+  │  $86,400 × 12 months = $1,036,800 per year              │
+  └─────────────────────────────────────────────────────────┘
 ```
 
-Monthly time saved (40 RFPs):
+### After AutonomIQ
+
 ```
-34 × 40 = 1,360 person-hours/month
-≈ 170 person-days/month
+  Per RFP:
+  ┌─────────────────────────────────────────────────────────┐
+  │  2 hours × 1 reviewer = 2 person-hours per RFP          │
+  │  2 × $60/hour         = $120 per RFP                    │
+  │  $120 × 40 RFPs       = $4,800 per month                │
+  │  $4,800 × 12 months   = $57,600 per year                │
+  └─────────────────────────────────────────────────────────┘
 ```
 
-Annualised:
-```
-1,360 × 12 = 16,320 person-hours/year saved
-≈ 8 full-time analyst equivalents freed up per year
-```
+### Savings
 
----
+```
+  Annual savings = $1,036,800 − $57,600 = ~$979,200/year
 
-## 2. Cost Reduced
-
-Monthly cost of manual RFP process:
-```
-36 person-hours × $60/hour × 40 RFPs = $86,400/month
-```
-
-Monthly cost with AutonomIQ:
-```
-2 person-hours × $60/hour × 40 RFPs = $4,800/month
-```
-
-Monthly savings:
-```
-$86,400 − $4,800 = $81,600/month
-```
-
-Annual cost reduction:
-```
-$81,600 × 12 = ~$979,200/year ≈ $1M/year
+  Equivalent to freeing up ~8 full-time senior analysts per year
+  to focus on higher-value strategic work.
 ```
 
 ---
 
-## 3. Revenue Recovered
+## 4. Impact Area 2 — Revenue from Recovered Missed RFPs
 
-RFPs missed per month due to bandwidth: 4  
-Win rate: 28%  
-Expected wins recovered per month: `4 × 0.28 = 1.12`  
-Average contract value: $350,000
-
-Monthly revenue recovered:
-```
-1.12 × $350,000 = $392,000/month
-```
-
-Annual revenue recovered:
-```
-$392,000 × 12 = ~$4.7M/year
-```
-
-Additionally, faster turnaround improves proposal quality and win rate. A conservative 3% improvement (28% → 31%) on 40 RFPs/month:
+Currently, 4 RFPs per month are missed or submitted late due to team bandwidth limits. AutonomIQ handles detection and processing autonomously, so these are no longer missed.
 
 ```
-Extra wins/month: 40 × 0.03 = 1.2
-Extra revenue/month: 1.2 × $350,000 = $420,000
-Annual uplift: ~$5M/year
+  ┌─────────────────────────────────────────────────────────┐
+  │  Missed RFPs recovered per month    :  4                │
+  │  Win rate applied                   :  28%              │
+  │  Expected additional wins per month :  4 × 0.28 = 1.12  │
+  │  Average contract value             :  $350,000         │
+  │                                                         │
+  │  Monthly revenue recovered          :  1.12 × $350K     │
+  │                                     =  $392,000/month   │
+  │                                                         │
+  │  Annual revenue recovered           :  $392K × 12       │
+  │                                     =  ~$4.7M/year      │
+  └─────────────────────────────────────────────────────────┘
+```
+
+This is the single largest impact driver. Even if only half the missed RFPs are recovered, the annual figure is still ~$2.35M.
+
+---
+
+## 5. Impact Area 3 — Win Rate Improvement
+
+Faster turnaround, more accurate requirement matching, and competitive pricing directly improve proposal quality. A conservative 3 percentage point improvement in win rate (28% → 31%) is assumed.
+
+```
+  ┌─────────────────────────────────────────────────────────┐
+  │  Win rate improvement               :  +3%              │
+  │  Additional wins per month          :  40 × 0.03 = 1.2  │
+  │  Revenue per additional win         :  $350,000         │
+  │                                                         │
+  │  Monthly revenue uplift             :  1.2 × $350K      │
+  │                                     =  $420,000/month   │
+  │                                                         │
+  │  Annual revenue uplift              :  $420K × 12       │
+  │                                     =  ~$5.04M/year     │
+  └─────────────────────────────────────────────────────────┘
+```
+
+Note: A 1% win rate improvement alone = $1.68M/year. The 3% assumption is deliberately conservative.
+
+---
+
+## 6. Impact Area 4 — Rework & Error Reduction
+
+Manual pricing involves spreadsheet-based models prone to formula errors, stale market data, and miscommunication between team members. AutonomIQ's Pricing Agent uses a structured model with live market data validation.
+
+```
+  Before AutonomIQ:
+  ┌─────────────────────────────────────────────────────────┐
+  │  Error rate                         :  22%              │
+  │  RFPs requiring rework per month    :  0.22 × 40 = 8.8  │
+  │  Rework cost per RFP                :  8 hrs × $60 = $480│
+  │  Monthly rework cost                :  8.8 × $480       │
+  │                                     =  $4,224/month     │
+  └─────────────────────────────────────────────────────────┘
+
+  After AutonomIQ:
+  ┌─────────────────────────────────────────────────────────┐
+  │  Error rate (structured model)      :  ~3%              │
+  │  RFPs requiring rework per month    :  0.03 × 40 = 1.2  │
+  │  Monthly rework cost                :  1.2 × $480       │
+  │                                     =  $576/month       │
+  └─────────────────────────────────────────────────────────┘
+
+  Monthly savings  :  $4,224 − $576  =  $3,648/month
+  Annual savings   :  $3,648 × 12    =  ~$43,776/year ≈ $44K
 ```
 
 ---
 
-## 4. Error & Rework Reduction
+## 7. Time Saved — Analyst Capacity
 
-Manual pricing error rate: 22% of RFPs require rework  
-Rework cost per RFP: ~8 person-hours × $60 = $480  
-Monthly rework cost: `0.22 × 40 × $480 = $4,224/month`
+Beyond cost, the freed-up analyst time represents a significant capacity gain.
 
-AutonomIQ's pricing agent uses a structured model with market data validation — estimated error rate drops to ~3%.
+```
+  ┌─────────────────────────────────────────────────────────┐
+  │  Time saved per RFP                 :  34 person-hours  │
+  │  (36 manual − 2 review)                                 │
+  │                                                         │
+  │  Monthly time saved (40 RFPs)       :  1,360 hrs/month  │
+  │  Annual time saved                  :  16,320 hrs/year  │
+  │                                                         │
+  │  Equivalent FTEs freed              :  ~8 analysts/year │
+  │  (based on 2,000 working hrs/year)                      │
+  └─────────────────────────────────────────────────────────┘
+```
 
-Monthly rework cost with AutonomIQ: `0.03 × 40 × $480 = $576/month`  
-Monthly savings: `$4,224 − $576 = $3,648/month`  
-Annual: ~$44,000/year
-
----
-
-## Summary
-
-| Impact Area | Annual Value |
-|---|---|
-| Labour cost reduction | ~$979,000 |
-| Revenue from recovered missed RFPs | ~$4,700,000 |
-| Win rate improvement (conservative 3%) | ~$5,000,000 |
-| Rework / error reduction | ~$44,000 |
-| Total estimated annual impact | ~$10.7M |
+These 8 analyst-equivalents can be redeployed to strategic activities: client relationships, solution design, and new market development.
 
 ---
 
-## Sensitivity Check
+## 8. Consolidated Impact
 
-The model is most sensitive to two variables:
-
-1. Win rate improvement — even a 1% lift on 40 RFPs/month at $350K average = $1.68M/year. The assumption of 3% is conservative given faster, higher-quality responses.
-
-2. Missed RFPs recovered — if only 2 of 4 missed RFPs are recovered, the revenue figure halves to ~$2.35M. Total impact still exceeds $7M/year.
-
-Labour savings alone (~$1M/year) are enough to justify deployment costs for most enterprises. The revenue upside is the real multiplier.
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│                     FULL IMPACT BREAKDOWN                                │
+│                                                                          │
+│  Impact Area                    Monthly         Annual                  │
+│  ─────────────────────────────  ──────────      ────────────            │
+│  Labour cost reduction          $81,600         $979,200                │
+│  Missed RFPs recovered          $392,000        $4,704,000              │
+│  Win rate improvement (+3%)     $420,000        $5,040,000              │
+│  Rework / error reduction       $3,648          $43,776                 │
+│  ─────────────────────────────  ──────────      ────────────            │
+│  TOTAL                          $897,248/mo     $10,766,976/yr          │
+│                                                 ≈ $10.7M / year         │
+└──────────────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
-## Caveats
+## 9. Sensitivity Analysis
 
-- Figures are estimates based on industry benchmarks, not audited financials
-- Actual impact depends on RFP volume, deal size, and existing team efficiency
-- Integration costs (portal connectors, catalog API, market data feed) are not modelled here
-- Human review overhead may be higher in regulated industries (government, defence)
+The model holds even under pessimistic assumptions:
+
+| Scenario | Change | Revised Annual Impact |
+|---|---|---|
+| Base case | As modelled | ~$10.7M |
+| Only 50% of missed RFPs recovered | Revenue halved | ~$8.4M |
+| Win rate improves only 1% (not 3%) | $3.36M less | ~$7.3M |
+| Both pessimistic scenarios combined | — | ~$5.0M |
+| Labour savings only (no revenue) | — | ~$1.0M |
+
+Even in the most conservative scenario (labour savings only), the annual return exceeds typical deployment costs for an enterprise AI platform.
+
+---
+
+## 10. Caveats & Limitations
+
+- All figures are estimates based on publicly available industry benchmarks, not audited company financials
+- Actual impact will vary based on RFP volume, average deal size, team structure, and existing tooling
+- Integration costs (portal connectors, product catalog API, market data feed, cloud hosting) are not included in this model
+- The win rate improvement assumption (3%) is conservative but unverified — actual improvement depends on proposal quality and competitive landscape
+- Human review overhead may be significantly higher in regulated industries such as government contracting or defence procurement
+- The model assumes stable RFP volume; seasonal spikes or drops will affect absolute figures proportionally

@@ -1,192 +1,206 @@
-# AutonomIQ — Architecture Document
+# AutonomIQ — System Architecture Document
 
-Team: TechCoders  
-Version: 2.0 · ET Gen AI Hackathon 2026
-
----
-
-## System Overview
-
-AutonomIQ is a multi-agent orchestration platform that automates the end-to-end RFP (Request for Proposal) lifecycle. Four specialized AI agents collaborate through a central Orchestrator, each owning a distinct stage of the pipeline. The system operates autonomously at a 94%+ rate, with structured escalation paths for edge cases.
-
-The frontend is a standalone static prototype (`login.html` → `dashboard.html`) that runs entirely in the browser using `localStorage` for auth and in-memory state for live simulation. A FastAPI backend (`demo_main.py`) provides the full API layer when connected.
+**Team:** TechCoders &nbsp;|&nbsp; **Version:** 2.0 &nbsp;|&nbsp; **ET Gen AI Hackathon 2026**
 
 ---
 
-## Agent Roles
+## 1. Overview
+
+AutonomIQ is a multi-agent AI platform that automates the complete RFP (Request for Proposal) lifecycle — from detection through submission — with a 94.2% autonomy rate. The system is built around four specialized agents coordinated by a central Orchestrator, communicating asynchronously through a message queue, and backed by a FastAPI REST layer and a real-time WebSocket feed to the dashboard.
+
+---
+
+## 2. Full System Architecture Diagram
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        EXTERNAL SOURCES                         │
-│   Gov Portals · University Procurement · Enterprise RFP Feeds   │
-└────────────────────────────┬────────────────────────────────────┘
-                             │ HTTP polling / webhook
-                             ▼
-┌─────────────────────────────────────────────────────────────────┐
-│               RFP IDENTIFICATION AGENT                          │
-│  • Scans procurement portals on a configurable schedule         │
-│  • Classifies RFPs by domain, urgency, and estimated value      │
-│  • Assigns priority: Urgent / High / Medium / Low               │
-│  • Deduplicates against existing pipeline                       │
-└────────────────────────────┬────────────────────────────────────┘
-                             │ Publishes RFP event to queue
-                             ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    ORCHESTRATOR AGENT                           │
-│  • Consumes RFP events from Redis queue                         │
-│  • Determines workflow path based on RFP type and priority      │
-│  • Dispatches tasks to Technical Match and Pricing agents       │
-│  • Tracks SLA timers — escalates if breach is predicted         │
-│  • Manages retries (max 3) with exponential back-off            │
-│  • Routes low-confidence results to Human Review queue          │
-└──────────┬──────────────────────────────────────┬───────────────┘
-           │ task dispatch                         │ task dispatch
-           ▼                                       ▼
-┌──────────────────────────┐         ┌─────────────────────────────┐
-│  TECHNICAL MATCH AGENT   │         │      PRICING AGENT          │
-│  • Parses RFP documents  │         │  • Receives matched product  │
-│  • Extracts structured   │         │    list from Technical Match │
-│    requirements via NLP  │         │  • Queries market data feed  │
-│  • Scores each product   │         │  • Builds competitive bid    │
-│    in catalog (0–100%)   │         │    using cost + margin model │
-│  • Returns top matches   │         │  • Flags bids outside SLA    │
-│    with confidence score │         │    budget thresholds         │
-└──────────┬───────────────┘         └──────────────┬──────────────┘
-           │ match results                           │ pricing output
-           └──────────────────┬──────────────────────┘
-                              │ combined result
-                              ▼
-                   ┌──────────────────────┐
-                   │    HUMAN REVIEW      │
-                   │  (only when needed)  │
-                   │  • Confidence < 70%  │
-                   │  • Value > $500K     │
-                   │  • SLA breach risk   │
-                   └──────────┬───────────┘
-                              │ approved / rejected
-                              ▼
-                   ┌──────────────────────┐
-                   │   SUBMISSION &       │
-                   │   AUDIT LOGGER       │
-                   │  • Submits proposal  │
-                   │  • Writes immutable  │
-                   │    audit record      │
-                   └──────────────────────┘
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                          EXTERNAL DATA SOURCES                              ║
+║                                                                              ║
+║   ┌─────────────────┐   ┌──────────────────────┐   ┌──────────────────┐    ║
+║   │  Government     │   │  University /        │   │  Enterprise RFP  │    ║
+║   │  Procurement    │   │  Research Portals    │   │  Platforms       │    ║
+║   │  Portals        │   │                      │   │                  │    ║
+║   └────────┬────────┘   └──────────┬───────────┘   └────────┬─────────┘    ║
+╚════════════╪══════════════════════╪════════════════════════╪══════════════╝
+             │  HTTP polling /      │  webhook triggers      │
+             └──────────────────────┼────────────────────────┘
+                                    │
+                                    ▼
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                       AGENT LAYER                                           ║
+║                                                                              ║
+║  ┌─────────────────────────────────────────────────────────────────────┐    ║
+║  │                  RFP IDENTIFICATION AGENT                           │    ║
+║  │                                                                     │    ║
+║  │  • Scans all configured portals on a scheduled interval             │    ║
+║  │  • Deduplicates against existing pipeline (hash-based check)        │    ║
+║  │  • Classifies RFP by domain: IT / Infrastructure / Security / HR    │    ║
+║  │  • Assigns priority score: Urgent / High / Medium / Low             │    ║
+║  │  • Extracts metadata: title, source, deadline, estimated value      │    ║
+║  │  • Publishes structured RFP event → Redis Queue                     │    ║
+║  └──────────────────────────────┬──────────────────────────────────────┘    ║
+║                                 │  RFP Event (JSON payload)                 ║
+║                                 ▼                                           ║
+║  ┌─────────────────────────────────────────────────────────────────────┐    ║
+║  │                    ORCHESTRATOR AGENT                               │    ║
+║  │                                                                     │    ║
+║  │  • Consumes events from Redis queue                                 │    ║
+║  │  • Determines workflow path based on RFP type, priority, value      │    ║
+║  │  • Dispatches parallel tasks to Technical Match + Pricing agents    │    ║
+║  │  • Starts SLA countdown timer per RFP deadline                      │    ║
+║  │  • Monitors agent heartbeats every 30 seconds                       │    ║
+║  │  • On SLA breach prediction → reroutes to fast-track path           │    ║
+║  │  • On retry exhaustion → escalates to Human Review queue            │    ║
+║  │  • Writes every routing decision to Audit Log                       │    ║
+║  └──────────┬──────────────────────────────────────┬────────────────────    ║
+║             │ Task dispatch                         │ Task dispatch         ║
+║             ▼                                       ▼                       ║
+║  ┌──────────────────────────┐         ┌──────────────────────────────┐      ║
+║  │  TECHNICAL MATCH AGENT   │         │      PRICING AGENT           │      ║
+║  │                          │         │                              │      ║
+║  │  • Receives RFP document │         │  • Receives matched product  │      ║
+║  │  • Runs NLP pipeline to  │         │    list + confidence scores  │      ║
+║  │    extract requirements  │         │  • Queries live market data  │      ║
+║  │  • Scores each product   │         │    feed for competitor rates │      ║
+║  │    in catalog (0–100%)   │         │  • Applies cost + margin     │      ║
+║  │  • Returns top N matches │         │    model to build bid        │      ║
+║  │    with confidence score │         │  • Flags bids outside budget │      ║
+║  │  • Escalates if best     │         │  • Returns final pricing     │      ║
+║  │    match < 70% confidence│         │    strategy to Orchestrator  │      ║
+║  └──────────┬───────────────┘         └──────────────┬───────────────┘      ║
+║             │ Match results                           │ Pricing output       ║
+║             └──────────────────┬────────────────────-┘                      ║
+║                                │ Combined proposal package                  ║
+║                                ▼                                            ║
+║  ┌─────────────────────────────────────────────────────────────────────┐    ║
+║  │                     DECISION GATE                                   │    ║
+║  │                                                                     │    ║
+║  │   Confidence ≥ 70%  AND  Value < $500K  AND  No SLA risk            │    ║
+║  │          │                                        │                 │    ║
+║  │          ▼ YES                                    ▼ NO              │    ║
+║  │   AUTO-SUBMIT                            HUMAN REVIEW QUEUE         │    ║
+║  │   (fully autonomous)                     • Low confidence           │    ║
+║  │                                          • High-value deal          │    ║
+║  │                                          • SLA breach risk          │    ║
+║  └──────────────────────────────────────────────────────────────────────    ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+             │
+             ▼
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                     INFRASTRUCTURE LAYER                                    ║
+║                                                                              ║
+║   ┌──────────────┐   ┌──────────────┐   ┌──────────────┐   ┌────────────┐  ║
+║   │  PostgreSQL  │   │    Redis     │   │   FastAPI    │   │  Audit Log │  ║
+║   │  (RFPs,      │   │  (Message    │   │  REST API    │   │  (append-  │  ║
+║   │  Workflows,  │   │   Queue +    │   │  + WebSocket │   │   only,    │  ║
+║   │  Audit)      │   │   Cache)     │   │  /docs UI)   │   │  immutable)│  ║
+║   └──────────────┘   └──────────────┘   └──────────────┘   └────────────┘  ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+             │
+             ▼
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                       FRONTEND LAYER                                        ║
+║                                                                              ║
+║   login.html                    dashboard.html + app.js                     ║
+║   ┌─────────────────────┐       ┌──────────────────────────────────────┐    ║
+║   │ • Split-panel UI    │  ───► │ • Auth guard (localStorage session)  │    ║
+║   │ • Sign In / Sign Up │       │ • Command Center (KPIs + charts)     │    ║
+║   │ • Phone number      │       │ • RFP Pipeline (table + filters)     │    ║
+║   │ • Location field    │       │ • Agent Monitor (live cards)         │    ║
+║   │ • GPS geolocation   │       │ • Workflow Engine (live countdown)   │    ║
+║   │   popup + reverse   │       │ • Audit Trail (live feed + search)   │    ║
+║   │   geocoding         │       │ • My Profile (user data from login)  │    ║
+║   └─────────────────────┘       └──────────────────────────────────────┘    ║
+╚══════════════════════════════════════════════════════════════════════════════╝
 ```
 
 ---
 
-## Communication Model
+## 3. Agent Communication Flow
 
-| Channel | Used For |
+```
+  RFP Identification          Orchestrator           Technical Match        Pricing
+        │                          │                        │                  │
+        │── RFP Event (Redis) ────►│                        │                  │
+        │                          │── dispatch task ──────►│                  │
+        │                          │── dispatch task ───────────────────────►  │
+        │                          │                        │                  │
+        │                          │◄── match results ──────│                  │
+        │                          │◄── pricing output ─────────────────────── │
+        │                          │                        │                  │
+        │                          │── assemble proposal    │                  │
+        │                          │── decision gate        │                  │
+        │                          │     ├─ auto-submit     │                  │
+        │                          │     └─ human review    │                  │
+        │                          │── write audit log      │                  │
+```
+
+---
+
+## 4. Error Handling & Self-Correction
+
+```
+  Agent Action
+       │
+       ├──► Transient failure (timeout / network drop)?
+       │         └──► Retry 1 ──► Retry 2 ──► Retry 3
+       │                   └── Success: continue workflow
+       │                   └── All failed: escalate to Orchestrator
+       │
+       ├──► Confidence score < 70%?
+       │         └──► Flag step → route to Human Review queue
+       │              Notify reviewer via email/in-app alert
+       │
+       ├──► SLA breach predicted (< 2h remaining)?
+       │         └──► Orchestrator reroutes to fast-track path
+       │              Bumps priority → notifies human reviewer
+       │
+       └──► Unrecoverable / unknown error?
+                 └──► Mark workflow status = ERROR
+                      Log full stack trace to audit trail
+                      Trigger on-call notification
+                      Preserve all intermediate outputs for replay
+```
+
+---
+
+## 5. Data Flow Summary
+
+```
+  [Portal Scan]
+       │
+       ▼
+  [RFP Detected] ──► Deduplicate ──► Classify ──► Prioritize
+       │
+       ▼
+  [Orchestrator] ──► Start SLA timer ──► Dispatch tasks
+       │
+       ├──► [Technical Match] ──► Extract requirements ──► Score products
+       │
+       └──► [Pricing Agent]   ──► Query market data ──► Build bid
+       │
+       ▼
+  [Decision Gate]
+       ├──► Auto-submit (high confidence, low value)
+       └──► Human Review (low confidence / high value / SLA risk)
+                 │
+                 ▼
+           [Approve / Reject]
+                 │
+                 ▼
+           [Submit / Archive] ──► [Audit Record Written]
+```
+
+---
+
+## 6. Key Design Decisions
+
+| Decision | Rationale |
 |---|---|
-| Redis Pub/Sub queue | Agent-to-agent task handoff (async, decoupled) |
-| REST API (FastAPI) | Frontend ↔ backend data fetch and action triggers |
-| WebSocket | Real-time dashboard updates (agent status, workflow progress) |
-| PostgreSQL | Persistent storage for RFPs, workflows, audit records |
-| localStorage (browser) | Auth session and user profile in prototype mode |
-| In-memory state (JS) | Live agent simulation, workflow ticking, audit feed |
-
-Agents do not call each other directly. All communication flows through the Orchestrator or the shared queue. This keeps agents independently deployable and testable.
-
----
-
-## Frontend Architecture
-
-```
-login.html
-  └── Sign In / Create Account (split-panel UI)
-        • Phone number field with country code prefix
-        • Location field with GPS geolocation popup
-        • Reverse geocoding via OpenStreetMap Nominatim
-        • Stores user object in localStorage on signup/login
-        └── Redirects to dashboard.html on success
-
-dashboard.html
-  └── Auth guard — redirects to login.html if no session
-        • Injects user name, initials, role, email,
-          phone, location into navbar and profile page
-        • Sign Out clears session → back to login.html
-        └── Loads app.js for all live functionality
-
-app.js
-  ├── Live Audit Trail
-  │     • Starts with 10 seed entries
-  │     • Injects new entry every 6 seconds from a pool
-  │     • Search filter (agent name / action text)
-  │     • Severity filter (High / Medium / Low)
-  │     • NEW badge + slide-in animation on fresh entries
-  │     • Dashboard mini-audit also updates live
-  └── Live Workflow Engine (WF-001)
-        • Est. completion countdown (HH:MM:SS, ticks every 1s)
-        • Overall progress bar animates upward every 3s
-        • Active step progress bar ticks forward
-        • Elapsed time counter updates per tick
-        • Step output text updates (e.g. 6/8 → 7/8 → 8/8)
-        • Sidebar workflow list progress syncs in real time
-```
-
----
-
-## Tool Integrations
-
-| Integration | Agent | Purpose |
-|---|---|---|
-| Procurement portal scrapers | RFP Identification | Detect new RFPs from Gov/University/Enterprise feeds |
-| NLP requirement extractor | Technical Match | Parse unstructured RFP text into structured requirements |
-| Product catalog API | Technical Match | Match requirements against internal product database |
-| Market data feed | Pricing | Pull competitor pricing signals for bid calibration |
-| Email / notification service | Orchestrator | Alert human reviewers when escalation is triggered |
-| Audit log writer | All agents | Append every decision to the immutable audit trail |
-| OpenStreetMap Nominatim | Frontend (login) | Reverse geocode GPS coordinates to city/country |
-
----
-
-## Error Handling Logic
-
-```
-Agent Action Fails
-       │
-       ├─► Transient error (timeout, network)?
-       │         └─► Retry up to 3× with exponential back-off
-       │                   ├─► Success → continue workflow
-       │                   └─► All retries exhausted → escalate to Orchestrator
-       │
-       ├─► Low confidence score (< 70%)?
-       │         └─► Flag step, route to Human Review queue
-       │
-       ├─► SLA breach predicted?
-       │         └─► Orchestrator reroutes to fast-track path,
-       │             notifies human reviewer immediately
-       │
-       └─► Unrecoverable error?
-                 └─► Mark workflow as ERROR, log full trace to audit,
-                     notify on-call via notification service
-```
-
-Every error event — including retries and escalations — is written to the audit trail with agent name, timestamp, error type, and resolution action.
-
----
-
-## Data Flow Summary
-
-```
-Portal Scan → RFP Detected → Classified & Queued
-    → Orchestrator picks up → Dispatches to Technical Match
-    → Requirements extracted → Products matched (confidence scored)
-    → Pricing Agent builds bid → Orchestrator assembles proposal
-    → If confidence ≥ 70% and value < $500K → Auto-submit
-    → Else → Human Review → Approve/Reject → Submit/Archive
-    → Audit record written at every step
-```
-
----
-
-## Key Design Decisions
-
-- Async queue over direct calls — agents are decoupled; one slow agent doesn't block others
-- Confidence thresholds — prevents low-quality outputs from reaching clients without review
-- SLA-aware routing — Orchestrator monitors deadlines and reroutes proactively, not reactively
-- Immutable audit log — append-only; no agent can modify or delete past entries
-- Live frontend simulation — audit trail and workflow engine tick in real time without a backend connection
-- Demo mode — full system runs without Docker, PostgreSQL, or Redis using in-memory fallbacks
+| Async queue (Redis) over direct agent calls | Agents are fully decoupled — one slow agent never blocks others |
+| Confidence threshold gate (70%) | Prevents low-quality outputs from reaching clients without human review |
+| SLA-aware proactive rerouting | Orchestrator acts before a breach happens, not after |
+| Append-only audit log | No agent can modify or delete past entries — full traceability guaranteed |
+| Demo mode (in-memory fallback) | Full system runs without Docker, PostgreSQL, or Redis for instant preview |
+| localStorage auth (frontend) | Zero-dependency prototype — works as a static file with no server |
+| GPS reverse geocoding (Nominatim) | Free, open-source, no API key required — city/country from coordinates |
