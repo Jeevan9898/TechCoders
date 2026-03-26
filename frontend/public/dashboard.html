@@ -157,6 +157,7 @@ input:checked+.toggle-slider:before{transform:translateX(16px)}
 .chart-container{position:relative;height:220px}
 /* Responsive */
 @media(max-width:1100px){.grid-4{grid-template-columns:repeat(2,1fr)}.grid-2{grid-template-columns:1fr}.grid-3{grid-template-columns:1fr 1fr}}
+@keyframes auditSlideIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
 </style>
 </head>
 <body>
@@ -179,6 +180,7 @@ input:checked+.toggle-slider:before{transform:translateX(16px)}
   <div class="sidebar-footer">
     <p><span class="status-dot"></span>All Systems Operational</p>
     <p style="margin-top:4px;font-size:10px;color:#334155">AutonomIQ v2.0 · Hackathon Build</p>
+    <button onclick="doLogout()" style="margin-top:10px;width:100%;padding:8px;border-radius:8px;background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.25);color:#fca5a5;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px"><i class="fas fa-sign-out-alt"></i> Sign Out</button>
   </div>
 </div>
 
@@ -375,8 +377,13 @@ input:checked+.toggle-slider:before{transform:translateX(16px)}
   <div class="page-header">
     <div><h1>Audit Trail</h1><p>Complete immutable log of every agent decision and action</p></div>
     <div style="display:flex;gap:10px">
-      <select class="form-input btn-sm" style="max-width:160px"><option>Today</option><option>Last 7 days</option><option>Last 30 days</option></select>
-      <select class="form-input btn-sm" style="max-width:160px"><option>All Severity</option><option>High</option><option>Medium</option><option>Low</option></select>
+      <input class="form-input btn-sm" id="audit-search" style="max-width:200px" placeholder="🔍 Search logs..." oninput="filterAudit()">
+      <select class="form-input btn-sm" id="audit-severity-select" style="max-width:160px" onchange="filterAudit()">
+        <option value="all">All Severity</option>
+        <option value="high">High</option>
+        <option value="medium">Medium</option>
+        <option value="low">Low</option>
+      </select>
     </div>
   </div>
   <div class="card card-body" id="full-audit-list"></div>
@@ -456,12 +463,12 @@ input:checked+.toggle-slider:before{transform:translateX(16px)}
       <div class="card card-body">
         <div style="font-size:15px;font-weight:700;color:#0f172a;margin-bottom:18px;display:flex;align-items:center;gap:8px"><i class="fas fa-user" style="color:#6366f1"></i> Personal Information</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-          <div class="form-group"><label class="form-label">First Name</label><input class="form-input" value="Arjun"></div>
-          <div class="form-group"><label class="form-label">Last Name</label><input class="form-input" value="Sharma"></div>
-          <div class="form-group"><label class="form-label">Email Address</label><input class="form-input" type="email" value="arjun.sharma@autonomiq.ai"></div>
-          <div class="form-group"><label class="form-label">Phone</label><input class="form-input" value="+91 98765 43210"></div>
-          <div class="form-group"><label class="form-label">Department</label><input class="form-input" value="Risk & Compliance"></div>
-          <div class="form-group"><label class="form-label">Location</label><input class="form-input" value="Mumbai, India"></div>
+          <div class="form-group"><label class="form-label">First Name</label><input class="form-input" id="profile-firstname" value="Arjun"></div>
+          <div class="form-group"><label class="form-label">Last Name</label><input class="form-input" id="profile-lastname" value="Sharma"></div>
+          <div class="form-group"><label class="form-label">Email Address</label><input class="form-input" id="profile-email" type="email" value="arjun.sharma@autonomiq.ai"></div>
+          <div class="form-group"><label class="form-label">Phone</label><input class="form-input" id="profile-phone" value="+91 98765 43210"></div>
+          <div class="form-group"><label class="form-label">Department</label><input class="form-input" id="profile-department" value="Risk &amp; Compliance"></div>
+          <div class="form-group"><label class="form-label">Location</label><input class="form-input" id="profile-location" value="Mumbai, India"></div>
         </div>
       </div>
 
@@ -471,7 +478,7 @@ input:checked+.toggle-slider:before{transform:translateX(16px)}
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
           <div class="form-group">
             <label class="form-label">Role</label>
-            <select class="form-input">
+            <select class="form-input" id="profile-role-select">
               <option>Risk Analyst</option>
               <option>Admin</option>
               <option>Operations Team</option>
@@ -484,14 +491,30 @@ input:checked+.toggle-slider:before{transform:translateX(16px)}
         </div>
         <div style="display:flex;flex-direction:column;gap:10px;margin-top:8px">
           <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:4px">Permissions</div>
-          ${[
-            ['View RFP Pipeline','yes'],['Create & Edit RFPs','yes'],['Approve RFPs','yes'],
-            ['Manage Agents','no'],['Rule Engine Config','no'],['System Settings','no']
-          ].map(([p,v]) => `
-            <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:#f8fafc;border-radius:8px;border:1px solid #f1f5f9">
-              <span style="font-size:12px;color:#475569">${p}</span>
-              <span style="font-size:11px;font-weight:700;padding:2px 10px;border-radius:6px;background:${v==='yes'?'#f0fdf4':'#fef2f2'};color:${v==='yes'?'#166534':'#991b1b'}">${v==='yes'?'✓ Allowed':'✗ Restricted'}</span>
-            </div>`).join('')}
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:#f8fafc;border-radius:8px;border:1px solid #f1f5f9">
+            <span style="font-size:12px;color:#475569">View RFP Pipeline</span>
+            <span style="font-size:11px;font-weight:700;padding:2px 10px;border-radius:6px;background:#f0fdf4;color:#166534">✓ Allowed</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:#f8fafc;border-radius:8px;border:1px solid #f1f5f9">
+            <span style="font-size:12px;color:#475569">Create & Edit RFPs</span>
+            <span style="font-size:11px;font-weight:700;padding:2px 10px;border-radius:6px;background:#f0fdf4;color:#166534">✓ Allowed</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:#f8fafc;border-radius:8px;border:1px solid #f1f5f9">
+            <span style="font-size:12px;color:#475569">Approve RFPs</span>
+            <span style="font-size:11px;font-weight:700;padding:2px 10px;border-radius:6px;background:#f0fdf4;color:#166534">✓ Allowed</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:#f8fafc;border-radius:8px;border:1px solid #f1f5f9">
+            <span style="font-size:12px;color:#475569">Manage Agents</span>
+            <span style="font-size:11px;font-weight:700;padding:2px 10px;border-radius:6px;background:#fef2f2;color:#991b1b">✗ Restricted</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:#f8fafc;border-radius:8px;border:1px solid #f1f5f9">
+            <span style="font-size:12px;color:#475569">Rule Engine Config</span>
+            <span style="font-size:11px;font-weight:700;padding:2px 10px;border-radius:6px;background:#fef2f2;color:#991b1b">✗ Restricted</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:#f8fafc;border-radius:8px;border:1px solid #f1f5f9">
+            <span style="font-size:12px;color:#475569">System Settings</span>
+            <span style="font-size:11px;font-weight:700;padding:2px 10px;border-radius:6px;background:#fef2f2;color:#991b1b">✗ Restricted</span>
+          </div>
         </div>
       </div>
 
@@ -499,20 +522,26 @@ input:checked+.toggle-slider:before{transform:translateX(16px)}
       <div class="card card-body">
         <div style="font-size:15px;font-weight:700;color:#0f172a;margin-bottom:18px;display:flex;align-items:center;gap:8px"><i class="fas fa-bell" style="color:#f59e0b"></i> Notification Preferences</div>
         <div style="display:flex;flex-direction:column;gap:12px">
-          ${[
-            ['New RFP Detected','Email & In-app',true],
-            ['Workflow Completed','In-app only',true],
-            ['SLA Breach Warning','Email & SMS',true],
-            ['Agent Errors','Email only',false],
-            ['Weekly Summary Report','Email only',true],
-          ].map(([label, channel, on]) => `
-            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:#f8fafc;border-radius:10px;border:1px solid #f1f5f9">
-              <div>
-                <div style="font-size:13px;font-weight:600;color:#0f172a">${label}</div>
-                <div style="font-size:11px;color:#94a3b8;margin-top:2px">${channel}</div>
-              </div>
-              <label class="toggle"><input type="checkbox" ${on?'checked':''} onchange="showNotif('Notification preference updated!')"><span class="toggle-slider"></span></label>
-            </div>`).join('')}
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:#f8fafc;border-radius:10px;border:1px solid #f1f5f9">
+            <div><div style="font-size:13px;font-weight:600;color:#0f172a">New RFP Detected</div><div style="font-size:11px;color:#94a3b8;margin-top:2px">Email &amp; In-app</div></div>
+            <label class="toggle"><input type="checkbox" checked onchange="showNotif('Notification preference updated!')"><span class="toggle-slider"></span></label>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:#f8fafc;border-radius:10px;border:1px solid #f1f5f9">
+            <div><div style="font-size:13px;font-weight:600;color:#0f172a">Workflow Completed</div><div style="font-size:11px;color:#94a3b8;margin-top:2px">In-app only</div></div>
+            <label class="toggle"><input type="checkbox" checked onchange="showNotif('Notification preference updated!')"><span class="toggle-slider"></span></label>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:#f8fafc;border-radius:10px;border:1px solid #f1f5f9">
+            <div><div style="font-size:13px;font-weight:600;color:#0f172a">SLA Breach Warning</div><div style="font-size:11px;color:#94a3b8;margin-top:2px">Email &amp; SMS</div></div>
+            <label class="toggle"><input type="checkbox" checked onchange="showNotif('Notification preference updated!')"><span class="toggle-slider"></span></label>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:#f8fafc;border-radius:10px;border:1px solid #f1f5f9">
+            <div><div style="font-size:13px;font-weight:600;color:#0f172a">Agent Errors</div><div style="font-size:11px;color:#94a3b8;margin-top:2px">Email only</div></div>
+            <label class="toggle"><input type="checkbox" onchange="showNotif('Notification preference updated!')"><span class="toggle-slider"></span></label>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:#f8fafc;border-radius:10px;border:1px solid #f1f5f9">
+            <div><div style="font-size:13px;font-weight:600;color:#0f172a">Weekly Summary Report</div><div style="font-size:11px;color:#94a3b8;margin-top:2px">Email only</div></div>
+            <label class="toggle"><input type="checkbox" checked onchange="showNotif('Notification preference updated!')"><span class="toggle-slider"></span></label>
+          </div>
         </div>
       </div>
 
@@ -569,5 +598,59 @@ input:checked+.toggle-slider:before{transform:translateX(16px)}
 </div>
 
 <script src="app.js"></script>
+<script>
+// ── Auth Guard & User Injection ───────────────────────────────
+(function() {
+  const raw = localStorage.getItem('iq_current_user');
+  if (!raw) { window.location.href = 'login.html'; return; }
+
+  const user = JSON.parse(raw);
+  const fullName   = user.firstName + ' ' + user.lastName;
+  const initials   = (user.firstName[0] + user.lastName[0]).toUpperCase();
+  const role       = user.role || 'Member';
+  const email      = user.email || '';
+  const memberSince = user.memberSince || 'N/A';
+
+  // Navbar avatar initials
+  document.querySelectorAll('.nav-avatar').forEach(el => el.textContent = initials);
+
+  // Profile page — avatar circle
+  const avatarCircle = document.querySelector('#page-profile [style*="font-size:36px"]');
+  if (avatarCircle) avatarCircle.textContent = initials;
+
+  // Profile page — name & role under avatar
+  const nameEl = document.querySelector('#page-profile [style*="font-size:18px;font-weight:700"]');
+  if (nameEl) nameEl.textContent = fullName;
+  const roleEl = document.querySelector('#page-profile [style*="font-size:13px;color:#64748b;margin-top:4px"]');
+  if (roleEl) roleEl.textContent = role;
+
+  // Member since
+  const memberEl = document.querySelector('#page-profile [style*="font-size:13px;font-weight:600;color:#0f172a"]');
+  if (memberEl) memberEl.textContent = memberSince;
+
+  // Personal info form fields
+  const setVal = (id, val) => { const el = document.getElementById(id); if(el) el.value = val; };
+  setVal('profile-firstname', user.firstName);
+  setVal('profile-lastname',  user.lastName);
+  setVal('profile-email',     email);
+  setVal('profile-phone',     user.phone || '');
+  setVal('profile-department', user.department || '');
+  setVal('profile-location',  user.location || '');
+
+  // Set role select — add option if not present
+  const roleSelect = document.getElementById('profile-role-select');
+  if (roleSelect) {
+    let found = false;
+    for (let opt of roleSelect.options) { if (opt.value === role || opt.text === role) { opt.selected = true; found = true; break; } }
+    if (!found) { const opt = new Option(role, role, true, true); roleSelect.add(opt); }
+  }
+
+  // Logout handler
+  window.doLogout = function() {
+    localStorage.removeItem('iq_current_user');
+    window.location.href = 'login.html';
+  };
+})();
+</script>
 </body>
 </html>

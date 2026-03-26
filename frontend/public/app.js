@@ -138,7 +138,7 @@ function renderRecentRFPs() {
 function renderAuditMini() {
   const el = document.getElementById('audit-mini-list');
   if(!el) return;
-  el.innerHTML = AUDIT.slice(0,5).map(a => `
+  el.innerHTML = liveAudit.slice(0,5).map(a => `
     <div class="audit-item">
       <div class="audit-icon" style="background:${auditBg(a.type)};color:${auditColor(a.type)}"><i class="fas ${auditIcon(a.type)}"></i></div>
       <div style="flex:1;min-width:0">
@@ -325,6 +325,31 @@ setInterval(() => {
 // ── Workflows ─────────────────────────────────────────────────
 let selectedWF = WORKFLOWS[0];
 
+// Live workflow state for WF-001
+let wfProgress = 65;
+let wfStepProgress = 60; // % within the current "Technical Analysis" step
+let wfElapsedMin = 20;   // minutes since step started (10:20)
+let wfMatchCount = 6;    // requirements matched so far out of 8
+
+// Est. completion countdown — target is 16:30, track as minutes from now
+function getEstCompletion() {
+  const now = new Date();
+  const target = new Date();
+  target.setHours(16, 30, 0, 0);
+  if(target < now) target.setDate(target.getDate() + 1);
+  const diff = Math.max(0, Math.floor((target - now) / 1000));
+  const h = Math.floor(diff / 3600);
+  const m = Math.floor((diff % 3600) / 60);
+  const s = diff % 60;
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
+
+function getElapsed() {
+  const m = wfElapsedMin;
+  if(m < 60) return `${m}m`;
+  return `${Math.floor(m/60)}h ${m%60}m`;
+}
+
 function renderWorkflows() {
   renderWFList();
   renderWFDetail(selectedWF);
@@ -341,8 +366,8 @@ function renderWFList() {
       </div>
       <div style="font-size:13px;font-weight:600;color:#0f172a;margin-bottom:8px;line-height:1.3">${w.title}</div>
       <div style="display:flex;align-items:center;gap:8px">
-        <div class="progress-bar"><div class="progress-fill ${w.status==='completed'?'fill-green':'fill-indigo'}" style="width:${w.progress}%"></div></div>
-        <span style="font-size:11px;font-weight:700;color:#64748b;min-width:28px">${w.progress}%</span>
+        <div class="progress-bar"><div class="progress-fill ${w.status==='completed'?'fill-green':'fill-indigo'}" style="width:${w.id==='WF-001'?wfProgress:w.progress}%;transition:width 1s ease"></div></div>
+        <span style="font-size:11px;font-weight:700;color:#64748b;min-width:28px">${w.id==='WF-001'?wfProgress:w.progress}%</span>
       </div>
     </div>`).join('');
 }
@@ -358,6 +383,17 @@ function renderWFDetail(wf) {
   if(!el) return;
   const statusBg = {processing:'#eef2ff',completed:'#f0fdf4',error:'#fef2f2'};
   const statusCol = {processing:'#4338ca',completed:'#166534',error:'#991b1b'};
+  const progress = wf.id==='WF-001' ? wfProgress : wf.progress;
+
+  // Build live step data for WF-001
+  const steps = wf.id==='WF-001' ? [
+    { name:'RFP Detection',        agent:'RFP Identification Agent', status:'completed', start:'10:00', end:'10:15', dur:'15m',           output:'RFP detected and classified as High Priority' },
+    { name:'Workflow Orchestration',agent:'Orchestrator Agent',      status:'completed', start:'10:15', end:'10:20', dur:'5m',            output:'Tasks distributed to 3 specialized agents' },
+    { name:'Technical Analysis',   agent:'Technical Match Agent',    status:'processing',start:'10:20', end:null,    dur:getElapsed(),     output:`Analyzing 8 requirements — ${wfMatchCount}/8 matched so far...` },
+    { name:'Pricing Analysis',     agent:'Pricing Agent',            status:'pending',   start:null,    end:null,    dur:null,             output:'Waiting for technical analysis completion' },
+    { name:'Human Review',         agent:'Human Reviewer',           status:'pending',   start:null,    end:null,    dur:null,             output:'Awaiting human approval' },
+  ] : wf.steps;
+
   el.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px">
       <div>
@@ -369,51 +405,176 @@ function renderWFDetail(wf) {
     <div style="margin-bottom:24px">
       <div style="display:flex;justify-content:space-between;margin-bottom:6px">
         <span style="font-size:12px;font-weight:600;color:#64748b">Overall Progress</span>
-        <span style="font-size:12px;font-weight:800;color:#0f172a">${wf.progress}%</span>
+        <span style="font-size:12px;font-weight:800;color:#0f172a" id="wf-progress-label">${progress}%</span>
       </div>
-      <div class="progress-bar" style="height:8px;border-radius:4px"><div class="progress-fill ${wf.status==='completed'?'fill-green':'fill-indigo'}" style="width:${wf.progress}%;border-radius:4px"></div></div>
+      <div class="progress-bar" style="height:8px;border-radius:4px">
+        <div class="progress-fill ${wf.status==='completed'?'fill-green':'fill-indigo'}" id="wf-progress-bar" style="width:${progress}%;border-radius:4px;transition:width 1s ease"></div>
+      </div>
     </div>
     <div style="font-size:14px;font-weight:700;color:#0f172a;margin-bottom:16px">Processing Timeline</div>
-    ${wf.steps.map((s,i) => `
+    ${steps.map((s,i) => `
       <div class="wf-step">
         <div class="wf-connector">
           <div class="wf-dot" style="background:${stepColor(s.status)}"><i class="fas ${stepIcon(s.status)}" style="font-size:13px"></i></div>
-          ${i<wf.steps.length-1?`<div class="wf-line" style="background:${i<wf.steps.findIndex(x=>x.status==='pending')?stepColor('completed'):'#e2e8f0'}"></div>`:''}
+          ${i<steps.length-1?`<div class="wf-line" style="background:${i<steps.findIndex(x=>x.status==='pending')?stepColor('completed'):'#e2e8f0'}"></div>`:''}
         </div>
         <div class="wf-content">
           <div class="wf-box" style="background:${stepBg(s.status)};border-color:${s.status==='processing'?'#c7d2fe':'#f1f5f9'}">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
               <div class="wf-box-title">${s.name}</div>
               <div style="display:flex;gap:8px;align-items:center">
-                ${s.dur?`<span style="font-size:10px;background:#f1f5f9;color:#64748b;padding:2px 8px;border-radius:6px;font-weight:600">${s.dur}</span>`:''}
+                ${s.dur?`<span style="font-size:10px;background:#f1f5f9;color:#64748b;padding:2px 8px;border-radius:6px;font-weight:600" ${s.status==='processing'?'id="wf-elapsed"':''}>${s.dur}</span>`:''}
                 ${s.start?`<span style="font-size:11px;color:#94a3b8;font-family:monospace">${s.start}</span>`:''}
               </div>
             </div>
             <div class="wf-box-agent"><i class="fas fa-robot" style="margin-right:4px"></i>${s.agent}</div>
-            <div class="wf-box-output">${s.output}</div>
-            ${s.status==='processing'?`<div class="progress-bar" style="height:3px;margin-top:8px"><div class="progress-fill fill-indigo" style="width:60%;animation:none"></div></div>`:''}
+            <div class="wf-box-output" ${s.status==='processing'?'id="wf-step-output"':''}>${s.output}</div>
+            ${s.status==='processing'?`
+              <div class="progress-bar" style="height:3px;margin-top:8px">
+                <div class="progress-fill fill-indigo" id="wf-step-bar" style="width:${wfStepProgress}%;transition:width 1s ease"></div>
+              </div>`:''}
           </div>
         </div>
       </div>`).join('')}
     ${wf.status==='completed'?`<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:12px 16px;margin-top:8px;color:#166534;font-size:13px;font-weight:600"><i class="fas fa-check-circle" style="margin-right:8px"></i>Workflow completed successfully with full audit trail preserved.</div>`:''}
-    ${wf.status==='processing'?`<div style="background:#eef2ff;border:1px solid #c7d2fe;border-radius:10px;padding:12px 16px;margin-top:8px;color:#4338ca;font-size:13px;font-weight:600"><i class="fas fa-info-circle" style="margin-right:8px"></i>Workflow running autonomously · Est. completion: ${wf.est}</div>`:''}
+    ${wf.status==='processing'?`
+      <div style="background:#eef2ff;border:1px solid #c7d2fe;border-radius:10px;padding:12px 16px;margin-top:8px;color:#4338ca;font-size:13px;font-weight:600;display:flex;justify-content:space-between;align-items:center">
+        <span><i class="fas fa-info-circle" style="margin-right:8px"></i>Workflow running autonomously</span>
+        <span style="font-family:monospace;font-size:14px;font-weight:800" id="wf-countdown">--:--:--</span>
+      </div>`:''}
   `;
+
+  // Kick off countdown immediately if this is the active workflow
+  if(wf.status==='processing') updateWFCountdown();
 }
 
+function updateWFCountdown() {
+  const el = document.getElementById('wf-countdown');
+  if(el) el.textContent = getEstCompletion();
+}
+
+// ── Live workflow ticker ──────────────────────────────────────
+setInterval(() => {
+  // Tick elapsed time
+  wfElapsedMin++;
+
+  // Slowly advance step progress bar (60 → 95 over time, then wraps for demo)
+  wfStepProgress = Math.min(98, wfStepProgress + Math.random() * 1.5);
+
+  // Advance overall progress slowly (65 → 85 range for demo)
+  if(wfProgress < 82) wfProgress = Math.min(82, +(wfProgress + 0.3).toFixed(1));
+
+  // Cycle match count 6→7→8→6 for realism
+  if(wfStepProgress > 90 && wfMatchCount < 8) wfMatchCount++;
+  if(wfMatchCount >= 8 && wfStepProgress > 97) { wfStepProgress = 60; wfMatchCount = 6; }
+
+  const onWorkflows = document.getElementById('page-workflows').classList.contains('active');
+
+  if(onWorkflows && selectedWF.id === 'WF-001') {
+    // Patch DOM directly — no full re-render needed
+    const bar = document.getElementById('wf-progress-bar');
+    const lbl = document.getElementById('wf-progress-label');
+    const stepBar = document.getElementById('wf-step-bar');
+    const stepOut = document.getElementById('wf-step-output');
+    const elapsed = document.getElementById('wf-elapsed');
+    if(bar) bar.style.width = wfProgress + '%';
+    if(lbl) lbl.textContent = wfProgress + '%';
+    if(stepBar) stepBar.style.width = wfStepProgress + '%';
+    if(stepOut) stepOut.textContent = `Analyzing 8 requirements — ${wfMatchCount}/8 matched so far...`;
+    if(elapsed) elapsed.textContent = getElapsed();
+  }
+
+  // Always update the WF list sidebar progress
+  if(onWorkflows) renderWFList();
+
+}, 3000);
+
+// Countdown ticks every second
+setInterval(() => {
+  if(document.getElementById('page-workflows').classList.contains('active') && selectedWF.id==='WF-001') {
+    updateWFCountdown();
+  }
+}, 1000);
+
 // ── Full Audit ────────────────────────────────────────────────
+let liveAudit = [...AUDIT];
+let auditSeverityFilter = 'all';
+let auditSearchFilter = '';
+
+// New live entries that get injected periodically
+const LIVE_AUDIT_POOL = [
+  { agent:'Orchestrator',     action:'Heartbeat check passed — all agents responsive',           type:'info'    },
+  { agent:'RFP Identifier',   action:'Scanning Gov portal — 0 new RFPs found this cycle',        type:'info'    },
+  { agent:'Technical Match',  action:'Requirement #7 matched with 88% confidence',               type:'success' },
+  { agent:'Pricing Agent',    action:'Market data feed reconnected — resuming pricing model',     type:'success' },
+  { agent:'Orchestrator',     action:'SLA timer updated for RFP-047 — 3h 12m remaining',         type:'warning' },
+  { agent:'Technical Match',  action:'Requirement #8 matched — all 8/8 complete',                type:'success' },
+  { agent:'Pricing Agent',    action:'Competitive bid calculated — $487K (within budget range)',  type:'success' },
+  { agent:'Orchestrator',     action:'Routing RFP-047 to Human Review queue',                    type:'info'    },
+  { agent:'RFP Identifier',   action:'New RFP detected — Cloud Services Tender (High Priority)', type:'warning' },
+  { agent:'Orchestrator',     action:'Workflow WF-001 progress updated to 78%',                  type:'info'    },
+];
+let liveAuditPoolIdx = 0;
+
+function nowTime() {
+  return new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false});
+}
+
+function severityOf(type) { return ({success:'Low',warning:'Medium',info:'Low',error:'High'})[type]||'Low'; }
+
 function renderFullAudit() {
   const el = document.getElementById('full-audit-list');
   if(!el) return;
-  el.innerHTML = AUDIT.map(a => `
-    <div class="audit-item">
+
+  let filtered = liveAudit;
+  if(auditSeverityFilter !== 'all') {
+    filtered = filtered.filter(a => severityOf(a.type).toLowerCase() === auditSeverityFilter.toLowerCase());
+  }
+  if(auditSearchFilter) {
+    const q = auditSearchFilter.toLowerCase();
+    filtered = filtered.filter(a => a.agent.toLowerCase().includes(q) || a.action.toLowerCase().includes(q));
+  }
+
+  if(filtered.length === 0) {
+    el.innerHTML = `<div style="text-align:center;padding:40px;color:#94a3b8;font-size:13px"><i class="fas fa-search" style="font-size:24px;margin-bottom:10px;display:block"></i>No entries match your filters.</div>`;
+    return;
+  }
+
+  el.innerHTML = filtered.map((a,i) => `
+    <div class="audit-item" style="${i===0&&a._new?'animation:auditSlideIn 0.4s ease':''}">
       <div class="audit-icon" style="background:${auditBg(a.type)};color:${auditColor(a.type)}"><i class="fas ${auditIcon(a.type)}"></i></div>
       <div style="flex:1;min-width:0">
-        <div class="audit-agent">${a.agent}</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="audit-agent">${a.agent}</div>
+          <span style="font-size:10px;font-weight:700;padding:1px 7px;border-radius:5px;background:${auditBg(a.type)};color:${auditColor(a.type)}">${severityOf(a.type)}</span>
+          ${a._new?`<span style="font-size:10px;font-weight:700;padding:1px 7px;border-radius:5px;background:#eef2ff;color:#6366f1">NEW</span>`:''}
+        </div>
         <div class="audit-action">${a.action}</div>
       </div>
       <div class="audit-time">${a.time}</div>
     </div>`).join('');
 }
+
+function filterAudit() {
+  const sel = document.getElementById('audit-severity-select');
+  const search = document.getElementById('audit-search');
+  if(sel) auditSeverityFilter = sel.value;
+  if(search) auditSearchFilter = search.value.trim();
+  renderFullAudit();
+}
+
+// Inject a new live audit entry every 6 seconds
+setInterval(() => {
+  const entry = { ...LIVE_AUDIT_POOL[liveAuditPoolIdx % LIVE_AUDIT_POOL.length], time: nowTime(), _new: true };
+  liveAuditPoolIdx++;
+  // Clear _new flag on previous entries
+  liveAudit = liveAudit.map(a => ({...a, _new:false}));
+  liveAudit.unshift(entry);
+  if(liveAudit.length > 50) liveAudit.pop(); // cap at 50
+  if(document.getElementById('page-audit').classList.contains('active')) renderFullAudit();
+  // Also refresh mini audit on dashboard
+  renderAuditMini();
+}, 6000);
 
 // ── Charts ────────────────────────────────────────────────────
 function initCharts() {
