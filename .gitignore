@@ -51,9 +51,6 @@ frontend/build/
 *.log
 logs/
 
-# Kiro specs (internal)
-.kiro/
-
 # Misc
 *.DS_Store
 Thumbs.db
