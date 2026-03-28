@@ -110,6 +110,7 @@ AutonomIQ is a multi-agent AI platform that automates the complete RFP (Request 
 ```
   RFP Identification          Orchestrator           Technical Match        Pricing
         │                          │                        │                  │
+        
         │── RFP Event (Redis) ────►│                        │                  │
         │                          │── dispatch task ──────►│                  │
         │                          │── dispatch task ───────────────────────►  │
