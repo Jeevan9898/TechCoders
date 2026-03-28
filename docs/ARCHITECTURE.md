@@ -4,119 +4,108 @@
 
 ---
 
-## 1. Overview
+# Overview
 
 AutonomIQ is a multi-agent AI platform that automates the complete RFP (Request for Proposal) lifecycle — from detection through submission — with a 94.2% autonomy rate. The system is built around four specialized agents coordinated by a central Orchestrator, communicating asynchronously through a message queue, and backed by a FastAPI REST layer and a real-time WebSocket feed to the dashboard.
 
 ---
 
-## 2. Full System Architecture Diagram
+## 1. Full System Architecture Diagram
 
-```
-╔══════════════════════════════════════════════════════════════════════════════╗
-║                          EXTERNAL DATA SOURCES                              ║
-║                                                                              ║
-║   ┌─────────────────┐   ┌──────────────────────┐   ┌──────────────────┐    ║
-║   │  Government     │   │  University /        │   │  Enterprise RFP  │    ║
-║   │  Procurement    │   │  Research Portals    │   │  Platforms       │    ║
-║   │  Portals        │   │                      │   │                  │    ║
-║   └────────┬────────┘   └──────────┬───────────┘   └────────┬─────────┘    ║
-╚════════════╪══════════════════════╪════════════════════════╪══════════════╝
-             │  HTTP polling /      │  webhook triggers      │
-             └──────────────────────┼────────────────────────┘
-                                    │
-                                    ▼
-╔══════════════════════════════════════════════════════════════════════════════╗
-║                       AGENT LAYER                                           ║
-║                                                                              ║
-║  ┌─────────────────────────────────────────────────────────────────────┐    ║
-║  │                  RFP IDENTIFICATION AGENT                           │    ║
-║  │                                                                     │    ║
-║  │  • Scans all configured portals on a scheduled interval             │    ║
-║  │  • Deduplicates against existing pipeline (hash-based check)        │    ║
-║  │  • Classifies RFP by domain: IT / Infrastructure / Security / HR    │    ║
-║  │  • Assigns priority score: Urgent / High / Medium / Low             │    ║
-║  │  • Extracts metadata: title, source, deadline, estimated value      │    ║
-║  │  • Publishes structured RFP event → Redis Queue                     │    ║
-║  └──────────────────────────────┬──────────────────────────────────────┘    ║
-║                                 │  RFP Event (JSON payload)                 ║
-║                                 ▼                                           ║
-║  ┌─────────────────────────────────────────────────────────────────────┐    ║
-║  │                    ORCHESTRATOR AGENT                               │    ║
-║  │                                                                     │    ║
-║  │  • Consumes events from Redis queue                                 │    ║
-║  │  • Determines workflow path based on RFP type, priority, value      │    ║
-║  │  • Dispatches parallel tasks to Technical Match + Pricing agents    │    ║
-║  │  • Starts SLA countdown timer per RFP deadline                      │    ║
-║  │  • Monitors agent heartbeats every 30 seconds                       │    ║
-║  │  • On SLA breach prediction → reroutes to fast-track path           │    ║
-║  │  • On retry exhaustion → escalates to Human Review queue            │    ║
-║  │  • Writes every routing decision to Audit Log                       │    ║
-║  └──────────┬──────────────────────────────────────┬────────────────────    ║
-║             │ Task dispatch                         │ Task dispatch         ║
-║             ▼                                       ▼                       ║
-║  ┌──────────────────────────┐         ┌──────────────────────────────┐      ║
-║  │  TECHNICAL MATCH AGENT   │         │      PRICING AGENT           │      ║
-║  │                          │         │                              │      ║
-║  │  • Receives RFP document │         │  • Receives matched product  │      ║
-║  │  • Runs NLP pipeline to  │         │    list + confidence scores  │      ║
-║  │    extract requirements  │         │  • Queries live market data  │      ║
-║  │  • Scores each product   │         │    feed for competitor rates │      ║
-║  │    in catalog (0–100%)   │         │  • Applies cost + margin     │      ║
-║  │  • Returns top N matches │         │    model to build bid        │      ║
-║  │    with confidence score │         │  • Flags bids outside budget │      ║
-║  │  • Escalates if best     │         │  • Returns final pricing     │      ║
-║  │    match < 70% confidence│         │    strategy to Orchestrator  │      ║
-║  └──────────┬───────────────┘         └──────────────┬───────────────┘      ║
-║             │ Match results                           │ Pricing output       ║
-║             └──────────────────┬────────────────────-┘                      ║
-║                                │ Combined proposal package                  ║
-║                                ▼                                            ║
-║  ┌─────────────────────────────────────────────────────────────────────┐    ║
-║  │                     DECISION GATE                                   │    ║
-║  │                                                                     │    ║
-║  │   Confidence ≥ 70%  AND  Value < $500K  AND  No SLA risk            │    ║
-║  │          │                                        │                 │    ║
-║  │          ▼ YES                                    ▼ NO              │    ║
-║  │   AUTO-SUBMIT                            HUMAN REVIEW QUEUE         │    ║
-║  │   (fully autonomous)                     • Low confidence           │    ║
-║  │                                          • High-value deal          │    ║
-║  │                                          • SLA breach risk          │    ║
-║  └──────────────────────────────────────────────────────────────────────    ║
-╚══════════════════════════════════════════════════════════════════════════════╝
-             │
-             ▼
-╔══════════════════════════════════════════════════════════════════════════════╗
-║                     INFRASTRUCTURE LAYER                                    ║
-║                                                                              ║
-║   ┌──────────────┐   ┌──────────────┐   ┌──────────────┐   ┌────────────┐  ║
-║   │  PostgreSQL  │   │    Redis     │   │   FastAPI    │   │  Audit Log │  ║
-║   │  (RFPs,      │   │  (Message    │   │  REST API    │   │  (append-  │  ║
-║   │  Workflows,  │   │   Queue +    │   │  + WebSocket │   │   only,    │  ║
-║   │  Audit)      │   │   Cache)     │   │  /docs UI)   │   │  immutable)│  ║
-║   └──────────────┘   └──────────────┘   └──────────────┘   └────────────┘  ║
-╚══════════════════════════════════════════════════════════════════════════════╝
-             │
-             ▼
-╔══════════════════════════════════════════════════════════════════════════════╗
-║                       FRONTEND LAYER                                        ║
-║                                                                              ║
-║   login.html                    dashboard.html + app.js                     ║
-║   ┌─────────────────────┐       ┌──────────────────────────────────────┐    ║
-║   │ • Split-panel UI    │  ───► │ • Auth guard (localStorage session)  │    ║
-║   │ • Sign In / Sign Up │       │ • Command Center (KPIs + charts)     │    ║
-║   │ • Phone number      │       │ • RFP Pipeline (table + filters)     │    ║
-║   │ • Location field    │       │ • Agent Monitor (live cards)         │    ║
-║   │ • GPS geolocation   │       │ • Workflow Engine (live countdown)   │    ║
-║   │   popup + reverse   │       │ • Audit Trail (live feed + search)   │    ║
-║   │   geocoding         │       │ • My Profile (user data from login)  │    ║
-║   └─────────────────────┘       └──────────────────────────────────────┘    ║
-╚══════════════════════════════════════════════════════════════════════════════╝
-```
+```╔════════════════════════════════════════════════════════════════════════════╗
+║                         🌐 EXTERNAL DATA SOURCES                           ║
+║  Govt Portals | University Portals | Enterprise RFP Systems               ║
+╚═══════════════════════════════╤════════════════════════════════════════════╝
+                                │ (Polling / Webhooks)
+                                ▼
+╔════════════════════════════════════════════════════════════════════════════╗
+║                  🔍 RFP IDENTIFICATION AGENT                               ║
+║  • Scan portals                                                            ║
+║  • Deduplicate (hash check)                                                ║
+║  • Classify + Priority                                                     ║
+║  • Extract metadata                                                        ║
+║                                                                            ║
+║  OUTPUT → RFP Event (JSON)                                                 ║
+╚═══════════════════════════════╤════════════════════════════════════════════╝
+                                │
+                                ▼
+                     ⚡ REDIS MESSAGE QUEUE (ASYNC)
+                                │
+                                ▼
+╔════════════════════════════════════════════════════════════════════════════╗
+║                    🧠 ORCHESTRATOR AGENT                                   ║
+║  • Consumes RFP events                                                     ║
+║  • Decides workflow path                                                   ║
+║  • Starts SLA timer                                                        ║
+║  • Dispatches parallel tasks                                               ║
+║  • Monitors agent health (heartbeat)                                       ║
+║                                                                            ║
+║  ERROR CONTROL:                                                            ║
+║   - Retry (3x)                                                             ║
+║   - SLA breach → Fast-track                                                ║
+║   - Failure → Human escalation                                             ║
+╚═══════════════╤═══════════════════════════════════════╤════════════════════╝
+                │                                       │
+     (Parallel Tasks)                         (Parallel Tasks)
+                ▼                                       ▼
 
----
+╔══════════════════════════╗               ╔══════════════════════════════╗
+║ 🧪 TECHNICAL MATCH AGENT ║               ║ 💰 PRICING AGENT            ║
+║                          ║               ║                              ║
+║ • NLP requirement extract║               ║ • Market price lookup        ║
+║ • Product matching       ║               ║ • Cost + margin model        ║
+║ • Confidence scoring     ║               ║ • Budget validation          ║
+║                          ║               ║                              ║
+║ OUTPUT:                  ║               ║ OUTPUT:                      ║
+║ Match list + confidence  ║               ║ Pricing strategy             ║
+║                          ║               ║                              ║
+║ ERROR:                   ║               ║ ERROR:                       ║
+║ <70% → flag              ║               ║ Invalid → flag               ║
+╚══════════════╤═══════════╝               ╚══════════════╤═══════════════╝
+               └───────────────┬─────────────────────────┘
+                               ▼
+╔════════════════════════════════════════════════════════════════════════════╗
+║                        🚦 DECISION GATE                                    ║
+║                                                                            ║
+║  Condition Check:                                                          ║
+║   ✔ Confidence ≥ 70%                                                       ║
+║   ✔ Value < $500K                                                          ║
+║   ✔ No SLA Risk                                                            ║
+║                                                                            ║
+║        YES ✅                              NO ❌                            ║
+║        ▼                                   ▼                               ║
+║  🤖 AUTO SUBMIT                   👤 HUMAN REVIEW QUEUE                    ║
+║                                   • Low confidence                        ║
+║                                   • High value                            ║
+║                                   • SLA risk                              ║
+╚═══════════════════════════════╤════════════════════════════════════════════╝
+                                │
+                                ▼
+╔════════════════════════════════════════════════════════════════════════════╗
+║                    🏗 INFRASTRUCTURE & TOOLS                               ║
+║                                                                            ║
+║  🗄 PostgreSQL  → RFPs, workflows, audit logs                              ║
+║  ⚡ Redis       → Message queue + cache                                     ║
+║  🚀 FastAPI    → REST APIs + WebSocket                                     ║
+║  📜 Audit Log  → Append-only (immutable tracking)                          ║
+║                                                                            ║
+║  🌍 External Tool:                                                         ║
+║   • Nominatim API → Reverse geolocation (frontend)                         ║
+╚═══════════════════════════════╤════════════════════════════════════════════╝
+                                │
+                                ▼
+╔════════════════════════════════════════════════════════════════════════════╗
+║                      🖥 FRONTEND DASHBOARD                                 ║
+║                                                                            ║
+║  • Real-time updates (WebSocket)                                           ║
+║  • RFP Pipeline view                                                       ║
+║  • Agent monitoring                                                        ║
+║  • Workflow countdown timers                                               ║
+║  • Human review modal                                                      ║
+║  • Audit trail (live feed)                                                 ║
+╚════════════════════════════════════════════════════════════════════════════╝
 
-## 3. Agent Communication Flow
+## 2. Agent Communication Flow
 
 ```
   RFP Identification          Orchestrator           Technical Match        Pricing
@@ -135,116 +124,132 @@ AutonomIQ is a multi-agent AI platform that automates the complete RFP (Request 
         │                          │── write audit log      │                  │
 ```
 
----
 
-## 4. Error Handling & Self-Correction
 
-```
-  Agent Action
-       │
-       ├──► Transient failure (timeout / network drop)?
-       │         └──► Retry 1 ──► Retry 2 ──► Retry 3
-       │                   └── Success: continue workflow
-       │                   └── All failed: escalate to Orchestrator
-       │
-       ├──► Confidence score < 70%?
-       │         └──► Flag step → route to Human Review queue
-       │              Notify reviewer via email/in-app alert
-       │
-       ├──► SLA breach predicted (< 2h remaining)?
-       │         └──► Orchestrator reroutes to fast-track path
-       │              Bumps priority → notifies human reviewer
-       │
-       └──► Unrecoverable / unknown error?
-                 └──► Mark workflow status = ERROR
-                      Log full stack trace to audit trail
-                      Trigger on-call notification
-                      Preserve all intermediate outputs for replay
-```
+## 3. Agent Roles
+
+### 3.1 RFP Identification Agent
+- Scans external portals for new RFPs  
+- Removes duplicates using hashing  
+- Classifies domain and assigns priority  
+- Extracts structured metadata  
+- Publishes events to Redis queue  
 
 ---
 
-## 5. Data Flow Summary
-
-```
-  [Portal Scan]
-       │
-       ▼
-  [RFP Detected] ──► Deduplicate ──► Classify ──► Prioritize
-       │
-       ▼
-  [Orchestrator] ──► Start SLA timer ──► Dispatch tasks
-       │
-       ├──► [Technical Match] ──► Extract requirements ──► Score products
-       │
-       └──► [Pricing Agent]   ──► Query market data ──► Build bid
-       │
-       ▼
-  [Decision Gate]
-       ├──► Auto-submit (high confidence, low value)
-       └──► Human Review (low confidence / high value / SLA risk)
-                 │
-                 ▼
-           [Approve / Reject]
-                 │
-                 ▼
-           [Submit / Archive] ──► [Audit Record Written]
-```
+### 3.2 Orchestrator Agent
+- Central decision-making unit  
+- Consumes events from Redis  
+- Dispatches tasks to agents in parallel  
+- Tracks SLA deadlines  
+- Handles retries, failures, and escalations  
+- Logs all actions in audit system  
 
 ---
 
-## 6. Key Design Decisions
-
-| Decision | Rationale |
-|---|---|
-| Async queue (Redis) over direct agent calls | Agents are fully decoupled — one slow agent never blocks others |
-| Confidence threshold gate (70%) | Prevents low-quality outputs from reaching clients without human review |
-| SLA-aware proactive rerouting | Orchestrator acts before a breach happens, not after |
-| Append-only audit log | No agent can modify or delete past entries — full traceability guaranteed |
-| Demo mode (in-memory fallback) | Full system runs without Docker, PostgreSQL, or Redis for instant preview |
-| localStorage auth (frontend) | Zero-dependency prototype — works as a static file with no server |
-| GPS reverse geocoding (Nominatim) | Free, open-source, no API key required — city/country from coordinates |
-
+### 3.3 Technical Match Agent
+- Processes RFP documents using NLP  
+- Extracts requirements  
+- Matches with internal catalog  
+- Produces confidence score  
+- Flags low-confidence results  
 
 ---
 
-## 7. Frontend Feature Summary (v2.0)
+### 3.4 Pricing Agent
+- Uses matched products as input  
+- Fetches market pricing data  
+- Applies cost + margin model  
+- Generates optimized bid  
 
-```
-login.html
-  ├── Split-panel UI (dark brand left, white form right)
-  ├── Sign In / Create Account tabs
-  ├── Phone number with country code prefix
-  ├── Location field + GPS geolocation popup (Nominatim reverse geocoding)
-  └── Stores user to localStorage → redirects to dashboard.html
+---
 
-dashboard.html + app.js
-  ├── Auth guard → redirects to login.html if no session
-  ├── User injection → name, initials, role, email, phone, location in navbar + profile
-  ├── Dark / Light mode toggle (persisted in localStorage)
-  ├── Moving background canvas (floating gradient orbs)
-  ├── Dynamic scrolling
-  │     • Scroll progress bar (indigo→cyan→green gradient)
-  │     • Navbar shrinks on scroll
-  │     • Parallax on page header and KPI cards
-  │     • Scroll-reveal on all cards (IntersectionObserver)
-  ├── New RFP Creation
-  │     • Instantly added to RFP Pipeline table
-  │     • New workflow created in Workflow Engine
-  │     • 5 steps run automatically with realistic timing
-  │     • Human Review modal auto-opens on completion
-  ├── Human Review Modal
-  │     • Proposal summary (title, source, priority, value, due date)
-  │     • All completed agent step outputs
-  │     • Reviewer notes field
-  │     • Approve → workflow = completed, RFP = approved, audit logged
-  │     • Reject  → workflow = error,     RFP = rejected, audit logged
-  ├── Live Audit Trail
-  │     • New entry injected every 6 seconds
-  │     • Search + severity filter (High/Medium/Low)
-  │     • NEW badge + slide-in animation
-  └── Live Workflow Engine
-        • Est. completion countdown (HH:MM:SS)
-        • Animated progress bar + elapsed step time
-        • Step output text updates in real time
-```
+### 3.5 Decision Gate
+- Evaluates final proposal based on:
+  - Confidence score  
+  - Deal value  
+  - SLA risk  
+
+**Outcomes:**
+- Auto-submit (high confidence, low risk)  
+- Human review (low confidence or high risk)  
+
+---
+
+## 4. Communication Flow
+
+The system follows an **event-driven asynchronous architecture**:
+
+1. RFP detected → published to Redis  
+2. Orchestrator consumes event  
+3. Tasks dispatched in parallel:
+   - Technical Match Agent  
+   - Pricing Agent  
+4. Outputs returned to Orchestrator  
+5. Proposal assembled  
+6. Decision Gate executed  
+7. Final action (submit / review)  
+8. Audit log updated  
+
+---
+
+## 5. Tool Integrations
+
+| Tool        | Purpose |
+|-------------|--------|
+| Redis       | Message queue & caching |
+| PostgreSQL  | Data storage (RFPs, workflows, logs) |
+| FastAPI     | REST APIs & WebSocket |
+| WebSocket   | Real-time frontend updates |
+| Audit Log   | Immutable tracking system |
+| Nominatim   | Reverse geolocation (frontend) |
+
+---
+
+## 6. Error Handling & Resilience
+
+### 6.1 Retry Mechanism
+- Up to 3 retries for transient failures  
+- Covers network issues and timeouts  
+
+### 6.2 Confidence-Based Validation
+- Confidence < 70% → routed to human review  
+
+### 6.3 SLA Monitoring
+- Tracks deadlines continuously  
+- If breach risk detected:
+  - Workflow is fast-tracked  
+  - Priority increased  
+
+### 6.4 Failure Handling
+- Unrecoverable errors:
+  - Workflow marked as ERROR  
+  - Full trace logged  
+  - Alerts triggered  
+  - State preserved for replay  
+
+---
+
+## 7. Key Design Principles
+
+- **Asynchronous Processing:** Ensures scalability and decoupling  
+- **Parallel Execution:** Reduces processing time  
+- **Self-Healing System:** Automatic retries and rerouting  
+- **Human-in-the-Loop:** Ensures quality control  
+- **Auditability:** Full traceability via immutable logs  
+
+---
+
+## 8. Summary
+
+AutonomIQ is a scalable, resilient, and intelligent multi-agent system that automates the RFP lifecycle using:
+
+- Event-driven architecture  
+- Parallel agent execution  
+- SLA-aware orchestration  
+- Robust error handling  
+- Real-time monitoring  
+
+This design ensures high efficiency, reliability, and production readiness.
+
+---
